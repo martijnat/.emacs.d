@@ -1,0 +1,1574 @@
+#+TITLE: Personal Emacs configuration
+#+author: Martijn Terpstra
+#+OPTIONS: toc:nil
+* About
+This is my personal Emacs configuration.
+This configuration is designed so it will set everything up from a clean Emacs installation with no prior packages installed.
+
+** Requirements
+In order to make sure this config loads correctly, make sure the following is installed on your system
+
+- A recent Emacs (this config may not work with an older Emacs
+  versions)
+- Gnu/Linux. Some functionality will be disabled when using this
+  config on other operating systems
+- Isync and mu for mail.
+- Hunspell for spellchecking
+- Languagetool for grammar checking
+
+** Setup
+In order for this config to work make sure the following files are
+located in ~$HOME/.emacs.d/~
+
+- init.org (This file)
+- custom.el (Variables set using M-x customize, can be empty)
+
+On your first run, evaluate the following command
+#+BEGIN_QUOTE
+(org-babel-load-file "~/.emacs.d/init.org")
+#+END_QUOTE
+This will create init.el, which will automatically be loaded on startup.
+Additionally any missing packages will be downloaded and installed.
+
+* Package management
+First we setup the sources from where we download packages
+#+BEGIN_SRC emacs-lisp
+  (setq tls-checktrust t)
+  (setq package-archives '(("gnu" . "https://elpa.gnu.org/packages/")
+                           ("melpa" . "https://melpa.org/packages/")))
+#+END_SRC
+
+Then we manually download use-package. This snippet tries to load
+use-packages and if it isn't present installs it manually and then
+reloads this file to continue loading all other packages.
+
+It isn't elegant but it is quite reliable.
+
+#+BEGIN_SRC emacs-lisp
+    (package-initialize)
+    (condition-case nil
+        (require 'use-package)
+      (error
+       (progn
+         (package-refresh-contents)
+         (message "Use-package missing, installing...")
+         (run-with-idle-timer 3 nil '(lambda () (interactive)
+                                       (package-install 'use-package)
+                                       (setq use-package-always-ensure t)
+                                       (load-file "~/.emacs.d/init.el"))))))
+#+END_SRC
+
+Sometimes I want to use some custom elisp outside the avaible
+packages, with this snippet I can just place them in ~/.emacs and they
+will be loaded automatically.
+
+#+BEGIN_SRC emacs-lisp
+  (add-to-list 'load-path "~/.emacs.d/extra/")
+  ;;(add-to-list 'load-path "~/.emacs.d/extra/magit/lisp")
+  (add-to-list 'custom-theme-load-path "~/.emacs.d/extra/")
+#+END_SRC
+
+I then install most missing packages using use-package
+
+#+BEGIN_SRC emacs-lisp
+  (use-package ag)
+  (use-package avy)
+  (use-package browse-kill-ring)
+  (use-package buffer-move)
+  (use-package company)
+  (use-package company-jedi)
+  (use-package company-math)
+  (use-package counsel)
+  (use-package dash)
+  (use-package evil)
+  (use-package edit-indirect)
+  (use-package expand-region)
+  (use-package fish-mode)
+  (use-package free-keys)
+  (use-package flycheck)
+  (use-package gruvbox-theme :defer t)
+  (use-package helm-ag)
+  (use-package iedit)
+  (use-package imenu-anywhere)
+  (use-package jedi)
+  (use-package key-chord)
+  (use-package langtool)
+  (use-package latex-pretty-symbols)
+  (use-package lorem-ipsum)
+  (use-package magit)
+  (use-package multiple-cursors)
+  (use-package org-ref)
+  (use-package paredit)
+  (use-package projectile)
+  (use-package py-autopep8)
+  (use-package rainbow-mode)
+  (use-package rotate)
+  (use-package smartscan)
+  (use-package smex)
+  (use-package smtpmail)
+  (use-package socks)
+  (use-package swiper)
+  (use-package slime)
+  (use-package slime-company)
+  (use-package term)
+  (use-package visual-regexp)
+  (use-package which-key)
+  (use-package writeroom-mode)
+  (use-package yasnippet)
+#+END_SRC
+
+If I want some settings like passwords to be included in my init file
+but not tracked with git I put them in a seperate file called private.org.
+
+#+BEGIN_SRC emacs-lisp
+  (let ((private-file "~/.emacs.d/private.org"))
+    (if (file-exists-p private-file)
+        (org-babel-load-file private-file)))
+#+END_SRC
+
+* Custom variables and functions
+Most variables can be maintained with custom-set-variables just fine
+however the following are things that I have to manually set.
+
+** File for customize
+Load the variables changed by =M-x customize=. I save the customized
+variables in a seperate file to keep this file clean. I you do not do
+this then the custom variables get appended to init.el which gets
+overwritten everytime you tangle this file.
+#+BEGIN_SRC emacs-lisp
+  (setq custom-file "~/.emacs.d/custom.el")
+  (if (file-exists-p custom-file)
+    (load custom-file))
+#+END_SRC
+
+** Colorize truncation symbol
+This snippet makes the truncation symbol inherit the face used to display glyphs
+#+BEGIN_SRC emacs-lisp
+  (set-display-table-slot standard-display-table 0
+                          (make-glyph-code ?$ 'escape-glyph))
+(set-display-table-slot standard-display-table 0
+                          (make-glyph-code ?$ 'escape-glyph))
+#+END_SRC
+
+** M-bind-mode
+This is a minor mode for my own keybindings.
+I can toggle it with =` DEL= in case I want to switch to the default keybindings.
+It runs in "emulation-mode" so its keybindings have priority over global keybindings and major mode bindings.
+If you want to have bindings that can be overwritten by major modes, use the global key bind map instead.
+#+BEGIN_SRC emacs-lisp
+  (defvar m-bind-mode-map (make-sparse-keymap))
+  (define-minor-mode m-bind-mode
+    "minor mode for custom keybindings"
+    :init-value t
+    :lighter "m-bind"
+    :keymap m-bind-mode-map)
+  (define-globalized-minor-mode global-m-bind-mode m-bind-mode m-bind-mode)
+  (add-to-list 'emulation-mode-map-alists `((m-bind-mode . ,m-bind-mode-map)))
+  (provide 'm-bind-mode)
+  (global-m-bind-mode t)
+#+END_SRC
+
+** Evil mode fixes
+Allow my usual window management keybindings in evil mode
+#+BEGIN_SRC emacs-lisp
+  (evil-global-set-key 'normal (kbd "` '") 'm-split-pane-below)
+  (evil-global-set-key 'normal (kbd "` /") 'm-split-pane-right)
+  (evil-global-set-key 'normal (kbd "` DEL") 'global-m-bind-mode)
+  (evil-global-set-key 'normal (kbd "` `") 'self-insert-command)
+  (key-chord-mode 1)
+  (key-chord-define evil-insert-state-map  "jk" 'evil-normal-state)
+#+END_SRC
+
+** Macro for binding many keys at once
+#+BEGIN_SRC emacs-lisp
+  (defmacro bind-list (map &rest pair-list)
+    `(dolist (pair '(,@pair-list))
+       (define-key ,map (kbd (car pair)) (car (cdr pair)))
+       (unless (or (not (car (cdr pair))) (functionp (car (cdr pair))))
+         (warn (format "Non-function in bind-list: %s" (car (cdr pair)))))))
+
+  (defmacro m-key (map key cmd)
+    "Shorthand for keybindings"
+    `(progn
+       (message (format "m-key: %s %s" ',key ',cmd))
+       (define-key ,map (kbd ,key) ',cmd)))
+#+END_SRC
+
+** Fonts
+Setting the default font as a variables. I have some keybindings to
+change to different fonts when I need them.
+#+BEGIN_SRC emacs-lisp
+  (defgroup m-custom nil "Personal customizations")
+
+  (defcustom m-face-font-default "Terminus 12" "Default font for switching fonts" :group 'm-custom)
+  (defcustom m-face-font-fallback "Monospace 10" "Font to use when default font is not installed" :group 'm-custom)
+  (defcustom m-face-font-alt1 "Terminus 9" "Small font" :group 'm-custom)
+  (defcustom m-face-font-alt2 "Monospace 11" "Aliased font" :group 'm-custom)
+  (defcustom m-face-font-alt3 "Monospace 16" "Large font" :group 'm-custom)
+  (defcustom m-face-font-variable "Monospace" "Font used for custom sizes" :group 'm-custom)
+  (defvar m-face-font m-face-font-default "Current font")
+#+END_SRC
+
+** Copy line
+A non destructive version of kill-line, similarly to how kill-ring-save
+is the non-desctructive version of kill-region. Simply kills and
+then yanks to keep all the behaviour from kill.
+#+BEGIN_SRC emacs-lisp
+  (defun m-copy-line (number-of-copies)
+    "Copies the current line to the kill ring with an argument duplicate the line n times"
+    (interactive "p")
+    (let ((old-point (point)))
+      (beginning-of-line)
+      (kill-whole-line)
+      (dotimes (tmp number-of-copies)
+        (yank))
+      (goto-char old-point)))
+#+END_SRC
+
+** Custom org mode meta-up/down
+Allows meta-up/down to be used for swapping lines when used outside of headlines and tables.
+#+BEGIN_SRC emacs-lisp
+  (with-eval-after-load 'org
+    (progn (defun org-drag-element-forward (&optional arg) (m-swap-line-down))
+           (defun org-drag-element-backward (&optional arg) (m-swap-line-up))))
+#+END_SRC
+
+** Custom remember function
+By default remember adds a header to each entry. I like my notes
+simpler so my function writes the entries directly.
+#+BEGIN_SRC emacs-lisp
+  (defun m-remember-append-to-file ()
+    "Custom version of rem"
+    (let* ((text (buffer-string))
+           (desc (remember-buffer-desc))
+           (remember-text (concat text
+                                  (save-excursion (goto-char (point-max))
+                                                  (if (bolp) nil "\n"))))
+           (buf (find-buffer-visiting remember-data-file)))
+      (if buf
+          (with-current-buffer buf
+            (save-excursion
+              (goto-char (point-max))
+              (insert remember-text))
+            (if remember-save-after-remembering (save-buffer)))
+        (append-to-file remember-text nil remember-data-file))))
+
+  (defun m-remember-minibuffer ()
+    "Prompt for remember text in minibuffer"
+    (interactive)
+    (let* ((remember-text (read-string "Remember: ")))
+      (remember remember-text)
+      (remember-finalize)))
+
+  (defun m-remember-quick ()
+    "Quickly adds the current clipboard to notes"
+    (interactive)
+    (let* ((clipboard (current-kill 0)))
+      (remember clipboard)
+      (remember-finalize)))
+
+
+#+END_SRC
+
+** Find file as root
+Open a file with root permissions, this will ask for a sudo
+password.
+#+BEGIN_SRC emacs-lisp
+  (defun m-sudo-edit ()
+    "Open a file with root permissions"
+    (interactive)
+    (let ((file (read-file-name "Edit as root: ")))
+      (unless (file-writable-p file)
+        (setq file (concat "/sudo:root@localhost:" file)))
+      (find-file file)))
+#+END_SRC
+
+** Easy transpose
+transpose words and lines easily.
+#+BEGIN_SRC emacs-lisp
+  (defun m-swap-word-right ()
+    "Swaps the word with the word on the right"
+    (interactive)
+    (backward-char)
+    (forward-word)
+    (transpose-words 1)
+    (backward-char))
+  (defun m-swap-word-left ()
+    "Swaps the word with the word on the left"
+    (interactive)
+    (forward-char)
+    (backward-word)
+    (transpose-words 1)
+    (backward-word)
+    (backward-word))
+  (defun m-swap-line-up ()
+    "Swaps the line with the line above"
+    (interactive)
+    (transpose-lines 1)
+    (previous-line 2))
+  (defun m-swap-line-down ()
+    "Swaps the line with the line below"
+    (interactive)
+    (next-line)
+    (transpose-lines 1)
+    (previous-line))
+#+END_SRC
+
+** Window management
+Custom functions for creating and deleting windows.
+These function have the following effects:
+- When you open a new window, you select the new window
+- Windows are automatically re-balanced whenever you create or delete windows.
+#+BEGIN_SRC emacs-lisp
+  (defun m-2-pane()
+    "Switch to two windows displayed next to each other"
+    (interactive)
+    (delete-other-windows)
+    (split-window-right))
+  (defun m-delete-pane()
+    "Delete a window, without killing the buffer, and rebalance the windows"
+    (interactive)
+    (if (m-single-window)
+        (delete-frame)
+      (progn
+        (delete-window)
+        (balance-windows))))
+  (defun m-split-pane-below ()
+    "Spilt the window vertically and rebalance the windows"
+    (interactive)
+    (split-window-below)
+    (other-window 1)
+    (balance-windows))
+  (defun m-split-pane-right ()
+    "Spilt the window horizonatally and rebalance the windows"
+    (interactive)
+    (split-window-right)
+    (balance-windows)
+ (other-window 1))
+  (defun m-single-window ()
+    "Check if a frame contains only a single window"
+    (eq 1 (length (window-list))))
+#+END_SRC
+
+** Functions for changing fonts
+#+BEGIN_SRC emacs-lisp
+  (defun m-update-frame ()
+    "Update display of fonts"
+    (interactive)
+    (condition-case nil
+        (progn
+          (set-face-font 'fixed-pitch m-face-font)
+          (set-face-font 'variable-pitch m-face-font)
+          (set-face-font 'default m-face-font)
+          (setq default-frame-alist `((fringe 0 . 0)
+                                      (font . ,m-face-font)))
+          (setq initial-frame-alist default-frame-alist)
+          (add-to-list 'default-frame-alist '(fullscreen . maximized))
+          (set-fringe-mode 0)
+          (scroll-bar-mode -1))
+      (error (progn (setq m-face-font m-face-font-fallback)
+                    (m-update-frame)))))
+  (defun m-reset-frame ()
+    "Sets default frame settings"
+    (interactive)
+    (setq m-face-font m-face-font-default)
+    (m-update-frame))
+  (defun m-large-frame ()
+    "Sets the frame fonts such that 2 windows fit horizontally"
+    (interactive)
+    (setq m-face-font m-face-font-alt2)
+    (m-update-frame))
+  (defun m-tiny-frame ()
+    "Use the smallest readable font"
+    (interactive)
+    (setq m-face-font m-face-font-alt1)
+    (m-update-frame))
+  (defun m-huge-frame ()
+    "Sets the frame to view 1 large single window"
+    (interactive)
+    (setq m-face-font m-face-font-alt3)
+    (m-update-frame))
+  (defun m-set-frame-fonts ()
+    "sets both the monospace and variable width fonts"
+    (interactive)
+    (setq m-face-font (format "%s %i" m-face-font-variable (read-number "New font size:" 12)))
+    (m-update-frame)
+    )
+  (m-reset-frame)
+#+END_SRC
+
+** Eval and Replace
+Replace the preceding sexp with its value.
+#+BEGIN_SRC emacs-lisp
+  (defun eval-and-replace ()
+    "Replace the preceding sexp with its value."
+    (interactive)
+    (backward-kill-sexp)
+    (condition-case nil
+        (prin1 (eval (read (current-kill 0)))
+               (current-buffer))
+      (error (message "Invalid expression")
+             (insert (current-kill 0)))))
+#+END_SRC
+
+** Terminals
+Personally I prefer to open new windows for my terminals than to reuse
+existing windows. Similar to how tmux splits panes every time you need
+another terminal. To accomplish this I wrote these small functions and
+bound them to easy keys.
+#+BEGIN_SRC emacs-lisp
+  (defvar m-term-buffer-name "terminal" "Name to give to term terminal buffers")
+  (defun m-user-shell ()
+    "Returns the current users shell"
+    (or explicit-shell-file-name
+        (getenv "ESHELL")
+        (getenv "SHELL")
+        "/bin/sh"))
+  (defun m-cmd-prompt ()
+    "Returns a string with a nicely formatted pwd"
+    (concat
+     (shell-command-to-string
+      "basename \"`pwd`\" | sed 's,^\\(.\\{4\\}\\)\\(.\\{3\\}\\).\\+\\(.\\{10\\}\\)$,\\1...\\3,g' | tr -d '\n'")
+     " > "))
+  (defun m-term-current ()
+    "Add a new terminal in the current window"
+    (interactive)
+    (balance-windows)
+    (if
+     (eq system-type 'windows-nt) (eshell t)
+     (ansi-term  (m-user-shell) m-term-buffer-name)))
+  (defun m-term-right ()
+    "Add terminal on the right"
+    (interactive)
+    (split-window-right)
+    (other-window 1)
+    (m-term-current))
+  (defun m-term-below ()
+    "Add terminal on the bottom"
+    (interactive)
+    (split-window-below)
+    (other-window 1)
+    (m-term-current))
+  (defun m-open-hidden-terminal ()
+    "Switch to the first invisible terminal buffer"
+    (interactive)
+    (let ((terminals (remove-if-not
+                      (lambda (b)
+                        (and (eq (buffer-local-value 'major-mode b) 'term-mode)
+                             (not  (get-buffer-window b t))))
+                      (buffer-list))))
+      (if terminals
+          (switch-to-buffer (car terminals))
+        (message "No invisible terminals"))))
+  (defun m-toggle-term ()
+    "Switch to or from a terminal buffer"
+    (interactive)
+    (if (string= "term-mode" major-mode)
+        (m-dired-from-term)
+      (m-term-current)))
+  (defun m-switch-to-terminal ()
+    "switched to a terminal if it exists"
+    (interactive)
+    (if (string= "term-mode" major-mode)
+        (message "already in a terminal buffer")
+      (let (
+            (buffers (cdr (buffer-list)))
+            (m-searching t))
+        (while buffers
+          (when (with-current-buffer (car buffers) (string= "term-mode" major-mode))
+            (progn
+              (switch-to-buffer (car buffers))
+              (setq m-searching nil))
+            (setq buffers nil))
+          (setq buffers (cdr buffers)))
+        (if m-searching
+            (progn
+              (m-term-current)
+              (message "Spawned new terminal"))))))
+  (defun m-switch-to-non-terminal ()
+    "switched to a non-terminal if it exists"
+    (interactive)
+    (let (
+          (buffers (cdr (buffer-list)))
+          (m-searching t))
+      (while buffers
+        (when (with-current-buffer (car buffers) (not (string= "term-mode" major-mode)))
+          (progn
+            (switch-to-buffer (car buffers))
+            (setq m-searching nil))
+          (setq buffers nil))
+        (setq buffers (cdr buffers)))
+      m-searching))
+
+  (defun m-term-command (shc)
+    "Read a command and then execute with the users shell"
+    (interactive
+     (list (concat (read-shell-command (m-cmd-prompt)) " && exit")))
+    (m-term-current)
+    (term-send-raw-string (concat shc "\n")))
+
+  (defun m-command-to-buffer (shc)
+    "Execute a command and open a buffer with its result"
+    (interactive
+     (list (concat (read-shell-command (m-cmd-prompt)))))
+    (switch-to-buffer (generate-new-buffer (concat "** " shc " **")))
+    (insert  (shell-command-to-string shc)))
+
+  (defun m-dired-from-term ()
+    (interactive)
+    (let ((dir default-directory))
+      (term-send-raw-string "\nexit\n")
+      (dired dir)))
+
+  (defun m-watch-later ()
+    "Prompt for url and save it for later watching"
+    (interactive)
+    (let* ((dir "~/videos/watchlist/")
+           (command "cd %s;phonedl '%s' && exit")
+           (video-url (read-string "Url: " (current-kill 0))))
+      (m-term-command (format command dir video-url))
+      (bury-buffer)))
+
+  (defun m-popup-term ()
+    "open a non-emacs terminal"
+    (interactive)
+    (m-term-command "xfce4-terminal --default-working-directory=`pwd` && exit")
+    (bury-buffer))
+
+
+  (defun m-async-command (shc)
+    "Read a command and then execute it in an async buffer"
+    (interactive
+     (list (read-shell-command (concat "Async: " (m-cmd-prompt)))))
+    (switch-to-buffer shc)
+    (async-shell-command shc shc shc))
+
+  (defun m-show-all-terminals ()
+    "Display all terminal windows"
+    (interactive)
+    (dolist (buf (buffer-list))
+      (with-current-buffer buf
+        (when (and (string= major-mode "term-mode")
+                   (not  (get-buffer-window buf)))
+          (m-split-pane-below)
+          (switch-to-buffer buf)))))
+
+  (defun m-logout-all-terminals ()
+    "logout of all terminals"
+    (interactive)
+    (while
+        (let ((terminals (remove-if-not
+                          (lambda (b) (eq (buffer-local-value 'major-mode b) 'term-mode))
+                          (buffer-list))))
+          (dolist (terminal terminals)
+            (switch-to-buffer terminal)
+            (term-send-raw-string "")))))
+#+END_SRC
+
+** Dired split
+Custom functions for spliting a window and then opening dired
+#+BEGIN_SRC emacs-lisp
+   (defun m-dired-right ()
+     "open dired on the right"
+     (interactive)
+     (split-window-right)
+     (balance-windows)
+  (other-window 1)
+     (dired-jump))
+   (defun m-dired-below ()
+     "open dired on the bottom"
+     (interactive)
+     (split-window-below)
+     (balance-windows)
+ (other-window 1)
+     (dired-jump))
+#+END_SRC
+
+** Open dired from terminal
+#+BEGIN_SRC emacs-lisp
+   (defun m-dired-right ()
+     "opens dired right from a terminal"
+     (interactive)
+     (split-window-right)
+     (balance-windows)
+  (other-window 1)
+     (dired-jump))
+   (defun m-dired-below ()
+     "open dired on the bottom from a terminal"
+     (interactive)
+     (split-window-below)
+     (balance-windows)
+ (other-window 1)
+     (dired-jump))
+#+END_SRC
+
+** Find file from region
+#+BEGIN_SRC emacs-lisp
+  (defun m-find-region (&optional arg region)
+    (interactive)
+    (let ((fname (buffer-substring-no-properties (mark) (point))))
+      (find-file fname)))
+#+END_SRC
+
+** Kill either word or region (if active)
+#+BEGIN_SRC emacs-lisp
+  (defun kill-region-or-backward-kill-sexp (&optional arg region)
+    "`kill-region' if the region is active, otherwise `backward-kill-sexp'"
+    (interactive
+     (list (prefix-numeric-value current-prefix-arg) (use-region-p)))
+    (if region
+        (kill-region (region-beginning) (region-end))
+      (backward-kill-sexp arg)))
+  (defun kill-region-or-forward-kill-sexp (&optional arg region)
+    "`kill-region' if the region is active, otherwise `kill-sexp'"
+    (interactive
+     (list (prefix-numeric-value current-prefix-arg) (use-region-p)))
+    (if (equal major-mode 'pdf-view-mode)
+        (pdf-view-kill-ring-save)
+      (if region
+          (kill-ring-save (region-beginning) (region-end))
+        (kill-sexp arg))))
+#+END_SRC
+
+** Change the case of a word or region (if active)
+#+BEGIN_SRC emacs-lisp
+  (defun kill-region-or-backward-kill-word (&optional arg region)
+    "`kill-region' if the region is active, otherwise `backward-kill-word'"
+    (interactive
+     (list (prefix-numeric-value current-prefix-arg) (use-region-p)))
+    (if region
+        (kill-region (region-beginning) (region-end))
+      (backward-kill-word arg)))
+  (defun m-upcase (&optional arg region)
+    "Upcase region or word."
+    (interactive
+     (list (prefix-numeric-value current-prefix-arg) (use-region-p)))
+    (if region
+        (upcase-region (region-beginning) (region-end))
+      (upcase-word arg)))
+  (defun m-downcase (&optional arg region)
+    "Downcase region or word."
+    (interactive
+     (list (prefix-numeric-value current-prefix-arg) (use-region-p)))
+    (if region
+        (downcase-region (region-beginning) (region-end))
+      (downcase-word arg)))
+  (defun m-capitalize (&optional arg region)
+    "Capitalize region or word."
+    (interactive
+     (list (prefix-numeric-value current-prefix-arg) (use-region-p)))
+    (if region
+        (capitalize-region (region-beginning) (region-end))
+      (capitalize-word arg)))
+#+END_SRC
+
+** Re-tangle init file
+#+BEGIN_SRC emacs-lisp
+  (defun tangle-init-file ()
+    (interactive)
+    (save-some-buffers)
+    (message "re-tangling init file ...")
+    (org-babel-load-file "~/.emacs.d/init.org")
+    (byte-recompile-directory "~/.emacs.d" 0 t))
+#+END_SRC
+
+** Kill buffer
+changes.
+#+BEGIN_SRC emacs-lisp
+  (defun m-kill-buffer-unsafe ()
+    "kill the current buffer regardless of if it was saved"
+    (interactive)
+    (kill-buffer (current-buffer)))
+#+END_SRC
+
+** Reload buffer
+#+BEGIN_SRC emacs-lisp
+  (defun m-reload-buffer ()
+    (interactive)
+    (let ((old-point (point)))
+      (find-alternate-file (buffer-file-name))
+      (goto-char old-point)))
+#+END_SRC
+** Send ` in terminal
+#+BEGIN_SRC emacs-lisp
+  (defun term-send-backquote ()
+    (interactive)
+    (term-send-raw-string "\`"))
+#+END_SRC
+
+** Flycheck
+#+BEGIN_SRC emacs-lisp
+(with-eval-after-load "ispell"
+  (setq ispell-program-name "hunspell")
+  (setq ispell-dictionary "nl_NL,en_US")
+  ;; ispell-set-spellchecker-params has to be called
+  ;; before ispell-hunspell-add-multi-dic will work
+  (ispell-set-spellchecker-params)
+  (ispell-hunspell-add-multi-dic "nl_NL,en_US"))
+  (use-package flyspell-popup)
+#+END_SRC
+
+** Pipe region
+#+BEGIN_SRC emacs-lisp
+  (defun m-pipe (&optional b e)
+    "Pipe selected text to a command and inserts its result in the buffer"
+    (interactive "r")
+    (shell-command-on-region b e (read-shell-command "| ") (current-buffer) t))
+  (defun m-sh ()
+    "Call a command and inserts its result in the buffer"
+    (interactive)
+    (insert (shell-command-to-string (read-shell-command "> "))))
+  (defun m-align (&optional b e)
+    "align selected text using column -t"
+    (interactive "r")
+    (shell-command-on-region b e "column -t -o ' '" (current-buffer) t))
+#+END_SRC
+
+** Copy current buffers file name
+#+BEGIN_SRC emacs-lisp
+  (defun m-kill-file-name ()
+    "kill the filename of the file of the current buffer"
+    (interactive)
+    (let ((file-name (if (buffer-file-name) (buffer-file-name) default-directory)))
+      (kill-new file-name)
+      (message "%s" file-name)))
+  (defun m-kill-buffer-name ()
+    "kill the name of the current buffer"
+    (interactive)
+    (let ((name (buffer-name)))
+      (kill-new name)
+      (message "%s" name)))
+#+END_SRC
+
+** Org open link
+#+BEGIN_SRC emacs-lisp
+  (defun m-org-open-link ()
+    (interactive)
+    (let ((search-whitespace-regexp "\\s-+"))
+      (org-open-at-point)))
+#+END_SRC
+
+** Mark current line
+#+BEGIN_SRC emacs-lisp
+(defun m-mark-whole-line (number-of-lines)
+"Sets the mark at the beginning of the line and the point at the end"
+(interactive "p")
+(beginning-of-line)
+(set-mark (point))
+(dotimes (tmp (- number-of-lines 1))
+(next-line))
+(end-of-line))
+#+END_SRC
+
+** Split paragraphs into sentences
+#+BEGIN_SRC emacs-lisp
+  (defun m-seperate-sentences ()
+    "Puts every sentences in a paragraph on a seperate line."
+    (interactive)
+    (save-excursion
+      (let ((fill-column (point-max)))
+        (if (region-active-p)
+            (progn
+              (fill-paragraph t t)
+              (replace-regexp "\\([\\.?! ]\\) " "\\1\n" nil (point) (mark)))
+          (progn
+            (fill-paragraph)
+            (let* ((start (progn (beginning-of-line) (point)))
+                   (end (progn (end-of-line) (point))))
+              (replace-regexp "\\([\\.?! ]\\) " "\\1\n" nil start end)))))))
+#+END_SRC
+
+** Hide some GUI elements
+#+BEGIN_SRC emacs-lisp
+  (tool-bar-mode -1)
+  (menu-bar-mode -1)
+  (scroll-bar-mode -1)
+#+END_SRC
+
+** Disable cursor blinking
+#+BEGIN_SRC emacs-lisp
+   (blink-cursor-mode 0)
+#+END_SRC
+
+** Enable dangerous commands
+#+BEGIN_SRC emacs-lisp
+  (put 'upcase-region    'disabled nil)
+  (put 'downcase-region  'disabled nil)
+  (put 'narrow-to-region 'disabled nil)
+  (put 'narrow-to-page   'disabled nil)
+  (put 'set-goal-column  'disabled nil)
+#+END_SRC
+
+** Email
+I installed mu from pacman so Emacs does not need to download it
+itself.
+#+BEGIN_SRC emacs-lisp
+  (when (eq system-type 'gnu/linux)
+    (progn
+      (use-package mu4e :ensure nil
+        :config
+        (add-hook 'mu4e-compose-mode-hook (lambda () (flyspell-mode t)))
+        (setq mu4e-hide-index-messages t)
+        (setq mu4e-maildir "~/Mail")
+        (setq mu4e-drafts-folder "/[Gmail].Drafts")
+        (setq mu4e-sent-folder   "/[Gmail].Sent Mail")
+        (setq mu4e-trash-folder  "/[Gmail].Trash")
+        (setq mu4e-maildir-shortcuts
+              '( ("/INBOX"               . ?i)
+                 ("/[Gmail].Sent Mail"   . ?s)
+                 ("/[Gmail].Trash"       . ?t)
+                 ("/[Gmail].All Mail"    . ?a)))
+        (m-key mu4e-compose-mode-map "C-c C-a" mail-add-attachment)
+        (m-key mu4e-view-mode-map "," (lambda () (interactive)
+                                        (mu4e-action-view-as-pdf (mu4e-message-at-point)))))
+      (use-package mu4e-contrib :ensure nil)))
+#+END_SRC
+
+** Pdf Tools
+pdf-tools is a mode for vieing pdf files. I prefer it over the
+default docview mode. Most importantly I can use isearch on pdf
+files with pdf-tools and select text.
+#+BEGIN_SRC emacs-lisp
+  (when (eq system-type 'gnu/linux)
+      (use-package pdf-tools
+        :init (pdf-tools-install)
+        (m-key pdf-view-mode-map "C-x h" m-pdf-kill-page)
+        (m-key pdf-view-mode-map "s s"   pdf-view-auto-slice-minor-mode)))
+#+END_SRC
+
+** Short yes-or-no
+Rather than typing "y e s RET" I can just type "y".
+#+BEGIN_SRC emacs-lisp
+  (fset 'yes-or-no-p 'y-or-n-p)
+#+END_SRC
+
+** Reload java files
+#+BEGIN_SRC emacs-lisp
+  (add-hook 'java-mode 'auto-revert-mode)
+#+END_SRC
+** Org mode preferences
+Use autofill mode with org. It automatically adds newlines when
+your sentences become too long.
+#+BEGIN_SRC emacs-lisp
+  ;;  (add-hook 'org-mode-hook 'auto-fill-mode)
+#+END_SRC
+This fixes some error messages with org-mode
+#+BEGIN_SRC emacs-lisp
+  (with-eval-after-load 'org
+    (setq org-planning-line-re
+          "^[    ]*\\(\\(?:CLOSED\\|DEADLINE\\|SCHEDULED\\):\\)")
+    (setq org-clock-line-re
+          "^[    ]*CLOCK:")
+    )
+  (org-reload)
+#+END_SRC
+
+Setup up latex to properly export to latex
+#+BEGIN_SRC emacs-lisp
+  (add-hook 'org-mode-hook
+            (lambda ()
+              (define-key yas/keymap [tab] 'yas-next-field)))
+  (setq org-latex-pdf-process
+        '("xelatex -shell-escape -interaction nonstopmode -output-directory %o %f"
+          "bibtex %b"
+          "xelatex -shell-escape -interaction nonstopmode -output-directory %o %f"
+          "xelatex -shell-escape -interaction nonstopmode -output-directory %o %f"))
+#+END_SRC
+
+** Disable bell
+By default Emacs tries to make a beep when you get an error or
+press =C-g=. This disables that to prevent unwanted noise.
+#+BEGIN_SRC emacs-lisp
+  (setq visible-bell nil)
+  (setq ring-bell-function 'ignore)
+#+END_SRC
+
+** Mode line
+Custom format for the mode line
+Currently set up to display the following
+- The _name_ of the current buffer
+- The _position_ in the current buffer (line number,position)
+- _Size_ of the current buffer
+- Current _major mode_
+- Current _input method_
+- If the buffer has been _modified_ by the style of brackets
+- The current _date_
+
+#+BEGIN_SRC emacs-lisp
+  (defvar m-mode-line-format
+    (list
+     '(:eval evil-mode-line-tag) ; mode when using evil
+     "%b %*"  ; Modified/readonly indicator
+     "%m" ; Current major mode
+     '(:eval (when current-input-method (concat " " current-input-method))) ;; input method
+     " - "
+     ;; display position in buffer (or page number when viewing a pdf)
+     '(:eval (if (equal major-mode 'pdf-view-mode)
+                 (concat "(" (number-to-string (pdf-view-current-page))
+                         "/" (number-to-string (pdf-cache-number-of-pages))
+                         ")")
+               ;; buffer position, buffer size, Line number, position in line
+               "%p/%I - L%l:%c"))
+     " - "
+     '(:eval (format-time-string "%H:%M - %a %-d %b")) ; Display the time and date
+     )
+    )
+
+  (setq-default mode-line-format m-mode-line-format)
+
+  (defun m-toggle-mode-line ()
+    "Toggle between a full mode line and 1 pixel heigh seperating bar"
+    (interactive)
+    (if  (eq mode-line-format m-mode-line-format)
+        (progn (setq-default mode-line-format nil)
+               (setq window-divider-default-bottom-width 1
+                     window-divider-default-places (quote bottom-only))
+               (window-divider-mode 1))
+      (progn (setq-default mode-line-format m-mode-line-format)
+             (window-divider-mode -1))))
+#+END_SRC
+
+** Set the fame title
+Keep it simple, just the buffer name.
+#+BEGIN_SRC emacs-lisp
+  (setq-default  frame-title-format "%b - Emacs")
+#+END_SRC
+
+** Extension preset modes
+#+BEGIN_SRC emacs-lisp
+  (setq auto-mode-alist (cons '("\\.php$" . web-mode) auto-mode-alist))
+  (setq auto-mode-alist (cons '("\\.org$" . org-mode) auto-mode-alist))
+  (setq auto-mode-alist (cons '("\\.pdf$" . pdf-view-mode) auto-mode-alist))
+#+END_SRC
+
+** Spellcheck
+#+BEGIN_SRC emacs-lisp
+  (use-package ispell
+    :config
+    (setq ispell-really-hunspell t))
+#+END_SRC
+
+** Org babel
+Don't ask for evaluating of certain languages
+#+BEGIN_SRC emacs-lisp
+  (defun my-org-confirm-babel-evaluate (lang body)
+    (not (string= lang lang)))  ; don't ask for ditaa
+  (setq org-confirm-babel-evaluate 'my-org-confirm-babel-evaluate)
+#+END_SRC
+
+** Fix yanking in terminal
+Yanking doesn't work properly somehow, no idea why. If you yank
+some text the screen will show you yanked it but the terminal will
+act as if you haven't yanked anything when you press enter.
+Here is a code snippet that fixes it. I copy-pasted it from the
+internet so I don't know how and why it works.
+#+BEGIN_SRC emacs-lisp
+  (when (eq system-type 'gnu/linux)
+    (progn
+      (defun my-term-mode-hook ()
+        (define-key term-raw-map (kbd "C-y") 'term-paste)
+        (define-key term-raw-map (kbd "C-k")
+          (lambda ()
+            (interactive)
+            (term-send-raw-string "\C-k")
+            (kill-line))))
+      (add-hook 'term-mode-hook 'my-term-mode-hook)))
+#+END_SRC
+
+** Close buffer after closing a terminal
+#+BEGIN_SRC emacs-lisp
+   (when (eq system-type 'gnu/linux)
+       (progn
+         (defadvice term-sentinel (around my-advice-term-sentinel (proc msg))
+           (if (memq (process-status proc) '(signal exit))
+               (let ((buffer (process-buffer proc)))
+                 ad-do-it
+                 (kill-buffer buffer)
+                 (balance-windows)
+                 (define-key global-map (kbd "`") nil)
+                 (m-key global-map "C-z"       nil)
+                 (m-key global-map "` '"       m-split-pane-below)
+                 (m-key global-map "` /"       m-split-pane-right)
+                 (m-key global-map "` DEL"     global-m-bind-mode)
+                 (m-key global-map "` `"       self-insert-command))
+             ad-do-it))
+         (ad-activate 'term-sentinel)))
+#+END_SRC
+
+** Change cursor type in terminals
+This is mostly useful to see if I am in char-mode or line-mode when
+using terminals
+#+BEGIN_SRC emacs-lisp
+    (when (eq system-type 'gnu/linux)
+        (progn
+          (defadvice term-line-mode (after term-line-mode-fixes ())
+            (set (make-local-variable 'cursor-type) 'box))
+          (defadvice term-char-mode (after term-char-mode-fixes ())
+            (set (make-local-variable 'cursor-type) 'hbar))
+          (ad-activate 'term-char-mode)
+          (ad-activate 'term-line-mode)))
+#+END_SRC
+
+** Kill all buffers
+#+BEGIN_SRC emacs-lisp
+  (defun m-kill-all-buffers ()
+    "Kill all buffers"
+    (interactive)
+    (dolist (b (buffer-list))
+      (kill-buffer b)))
+#+END_SRC
+
+** Align values
+#+BEGIN_SRC emacs-lisp
+  (defun align-values (start end)
+    "Vertically aligns region based on lengths of the first value of each line.
+  Example output:
+
+      foo        bar
+      foofoo     bar
+      foofoofoo  bar"
+    (interactive "r")
+    (align-regexp start end
+                  "\\S-+\\(\\s-+\\)"
+                  1 1 nil))
+#+END_SRC
+
+** Auctex preferences
+#+BEGIN_SRC emacs-lisp
+  (use-package auctex :defer t)
+  (use-package latex-extra)
+  (if (executable-find "xelatex")
+      (setq LaTeX-command "xelatex -shell-escape")
+    (setq LaTeX-command "latex -shell-escape"))
+  (setq TeX-PDF-mode   t)
+  (setq TeX-auto-save  t)
+  (setq TeX-parse-self t)
+  (setq TeX-save-query nil)
+  (setq-default TeX-master nil)
+  (add-hook 'TeX-mode-hook 'reftex-mode)
+  ;;(add-hook 'TeX-mode-hook 'TeX-fold-mode)
+  ;;(add-hook 'TeX-mode-hook 'latex-extra-mode)
+#+END_SRC
+** Select and change rectange
+#+BEGIN_SRC emacs-lisp
+  (defun m-change-rectangle ()
+    (interactive)
+    (let ((corner (point)))
+      (call-interactively 'avy-goto-word-1)
+      (call-interactively 'string-rectangle)))
+#+END_SRC
+** Move by blocks of text
+#+BEGIN_SRC emacs-lisp
+  (defun m-forward-block (&optional n)
+    "Move cursor to next text block."
+    (interactive "p")
+    (let ((n (if (null n) 1 n)))
+      (re-search-forward "\n[\t\n ]*\n+" nil "NOERROR" n)))
+
+  (defun m-backward-block (&optional n)
+    "Move cursor to previous text block."
+    (interactive "p")
+    (let ((n (if (null n) 1 n))
+          ($i 1))
+      (while (<= $i n)
+        (if (search-backward-regexp "\n[\t\n ]*\n+" nil "NOERROR")
+            (progn (skip-chars-backward "\n\t "))
+          (progn (goto-char (point-min))
+                 (setq $i n)))
+        (setq $i (1+ $i)))))
+#+END_SRC
+** Compile in the background
+#+BEGIN_SRC emacs-lisp
+  (defun m-compile-background ()
+    (interactive)
+    (save-window-excursion
+      (compile compile-command)))
+
+  (defun m-compile-foreground ()
+    (interactive)
+    (ansi-term "make" "make"))
+#+END_SRC
+** Mail
+#+BEGIN_SRC emacs-lisp
+  (defun m-mail ()
+    (interactive)
+    (mu4e-update-mail-and-index t))
+#+END_SRC
+* Global modes
+Modes to be on by default in all buffers
+
+** Region bindings mode
+Enables special keybindings for when a region is active
+#+BEGIN_SRC emacs-lisp
+  (use-package region-bindings-mode :config
+    (region-bindings-mode-enable))
+#+END_SRC
+
+** Text completion
+A nice mode for Text completion
+#+BEGIN_SRC emacs-lisp
+  ;; (use-package auto-complete
+  ;;   :config (progn (ac-config-default) (ac-flyspell-workaround)))
+  (global-company-mode t)
+  (add-hook 'org-mode-hook '(lambda () (setq-local company-idle-delay 0.5) ))
+#+END_SRC
+** Undo tree
+Allows you to browse through your undo history like a tree.
+#+BEGIN_SRC emacs-lisp
+  (use-package undo-tree :init (global-undo-tree-mode t))
+  (defun m-undo-tree ()
+    "Custom wrapper that enables undo tree if neede"
+    (interactive)
+    (condition-case nil (undo-tree-visualize)
+      (error (progn (undo-tree-mode t) (undo-tree-visualize)))))
+#+END_SRC
+
+** Yasnippet
+A mode for writing keywords that expand to predefined text.
+Useful for writing boilerplate.
+#+BEGIN_SRC emacs-lisp
+  (use-package yasnippet :config (yas-global-mode t))
+#+END_SRC
+
+** Super save
+Automatically save your buffer when Emacs loses focus. This is
+Useful when you are editing a file that is also open in another
+program.
+#+BEGIN_SRC emacs-lisp
+  (use-package super-save :config (super-save-mode +1))
+#+END_SRC
+
+** Show parenthesis
+Show matching parenthesis when your cursor in on one of them.
+Useful with nested parenthesis.
+#+BEGIN_SRC emacs-lisp
+  (show-paren-mode 1)
+#+END_SRC
+
+** Command completion
+#+BEGIN_SRC emacs-lisp
+  ;; (use-package ido :config
+  ;;   (ido-mode t))
+  ;; (use-package ido-ubiquitous :config
+  ;;   (ido-ubiquitous-mode t))
+  (use-package ivy
+    :config (ivy-mode 1))
+#+END_SRC
+** GPG
+#+BEGIN_SRC emacs-lisp
+  (epa-file-enable)
+#+END_SRC
+
+* Bindings
+
+** Switch to special buffers
+Bindings for switching to commonly used buffers. Often faster
+than switching buffers normally.
+#+BEGIN_SRC emacs-lisp
+  (defmacro m-special-buffer-key (arg-key arg-file)
+    "Creates keybinding to open a file"
+    `(progn
+       (message (format "m-special-buffer-key: %s %s" ',arg-key ',arg-file))
+       (define-key m-bind-mode-map (kbd (concat "C-c C-w " ,arg-key))
+       '(lambda () (interactive)
+          (find-file ,arg-file)))))
+  (defun m-view-message ()
+    (interactive)
+    (switch-to-buffer "*Messages*" nil nil))
+
+  (define-key global-map (kbd "C-c C-w") nil)
+  (define-key global-map (kbd "C-c C-w C-W") '(lambda () (interactive) (find-file "~/videos/watchlist/")))
+  (define-key global-map (kbd "C-c C-w C-a") '(lambda () (interactive) (find-file "/adb:1101e847e5bf724a:/storage/extSdCard/")))
+  (define-key global-map (kbd "C-c C-w C-b") '(lambda () (interactive) (find-file "~/notes/org/backup.org")))
+  (define-key global-map (kbd "C-c C-w C-n") '(lambda () (interactive) (find-file "~/notes/")))
+  (define-key global-map (kbd "C-c C-w C-s") '(lambda () (interactive) (find-file "~/.scratch.org")))
+  (define-key global-map (kbd "C-c C-w s")   '(lambda () (interactive) (find-file "~/.scratch.el")))
+  (define-key global-map (kbd "C-c C-w S")   '(lambda () (interactive) (find-file "~/.secrets.org")))
+  (define-key global-map (kbd "C-c C-w C-d") '(lambda () (interactive) (find-file "~/Downloads/")))
+  (define-key global-map (kbd "C-c C-w RET") '(lambda () (interactive) (find-file "~/music/")))
+  (define-key global-map (kbd "C-c a") '(lambda () (interactive) (find-file "~/agenda.org")))
+  (define-key global-map (kbd "C-x a") '(lambda () (interactive) (org-agenda-list 35)))
+#+END_SRC
+
+** Kill page in pdf view
+#+BEGIN_SRC emacs-lisp
+  (defun m-pdf-kill-page ()
+    "copied the page contents in pdf view"
+    (interactive)
+    (pdf-view-mark-whole-page)
+    (pdf-view-kill-ring-save))
+#+END_SRC
+
+** Global map
+#+BEGIN_SRC emacs-lisp
+  (define-key global-map (kbd "`") nil)
+  (define-key global-map (kbd "C-z") nil)
+  (m-key global-map "<M-down>"  m-swap-line-down)
+  (m-key global-map "<M-left>"  m-swap-word-left)
+  (m-key global-map "<M-right>" m-swap-word-right)
+  (m-key global-map "<M-up>"    m-swap-line-up)
+  (m-key global-map "<S-down>"  paredit-backward-barf-sexp)
+  (m-key global-map "<S-left>"  paredit-forward-barf-sexp)
+  (m-key global-map "<S-right>" paredit-forward-slurp-sexp)
+  (m-key global-map "<S-up>"    paredit-backward-slurp-sexp)
+  (m-key global-map "C-w"       kill-region-or-backward-kill-sexp)
+  (m-key global-map "M-n"       forward-paragraph)
+  (m-key global-map "M-p"       backward-paragraph)
+  (m-key global-map "M-w"       kill-region-or-forward-kill-sexp)
+  (m-key global-map "M-t"       transpose-sexps)
+  (m-key global-map "C-M-T"     transpose-words)
+  (m-key global-map "` '"       m-split-pane-below)
+  (m-key global-map "` /"       m-split-pane-right)
+  (m-key global-map "` DEL"     global-m-bind-mode)
+  (m-key global-map "` `"       self-insert-command)
+#+END_SRC
+
+** m-bind-mode
+#+BEGIN_SRC emacs-lisp
+  (define-key m-bind-mode-map (kbd "C-c C-w") nil)
+  (m-key m-bind-mode-map "<C-S-down>"         buf-move-down)
+  (m-key m-bind-mode-map "<C-S-left>"         buf-move-left)
+  (m-key m-bind-mode-map "<C-S-right>"        buf-move-right)
+  (m-key m-bind-mode-map "<C-S-up>"           buf-move-up)
+  (m-key m-bind-mode-map "<C-down>"           windmove-down)
+  (m-key m-bind-mode-map "<C-left>"           windmove-left)
+  (m-key m-bind-mode-map "<C-right>"          windmove-right)
+  (m-key m-bind-mode-map "<C-up>"             windmove-up)
+  (m-key m-bind-mode-map "<S-menu>"           er/expand-region)
+  (m-key m-bind-mode-map "<menu>"             er/contract-region)
+  (m-key m-bind-mode-map "C-'"                edit-indirect-region)
+  (m-key m-bind-mode-map "C-("                paredit-splice-sexp)
+  (m-key m-bind-mode-map "C-)"                paredit-convolute-sexp)
+  (m-key m-bind-mode-map "C-,"                kmacro-start-macro-or-insert-counter)
+  (m-key m-bind-mode-map "C-."                kmacro-end-or-call-macro)
+  (m-key m-bind-mode-map "C-/"                flyspell-popup-correct)
+  (m-key m-bind-mode-map "C-;"                iedit-mode)
+  (m-key m-bind-mode-map "C-<"                flyspell-auto-correct-previous-word)
+  (m-key m-bind-mode-map "C->"                flyspell-goto-next-error)
+  (m-key m-bind-mode-map "C-?"                company-complete-common-or-cycle)
+  (m-key m-bind-mode-map "C-M-,"              kmacro-cycle-ring-previous)
+  (m-key m-bind-mode-map "C-M-."              kmacro-cycle-ring-next)
+  (m-key m-bind-mode-map "C-M-a"              backward-sentence)
+  (m-key m-bind-mode-map "C-M-e"              forward-sentence)
+  (m-key m-bind-mode-map "C-M-e"              forward-sentence)
+  (m-key m-bind-mode-map "C-M-x"              execute-extended-command)
+  (m-key m-bind-mode-map "C-\""               edit-indirect-commit)
+  (m-key m-bind-mode-map "C-c C-w <C-down>"   buf-move-down)
+  (m-key m-bind-mode-map "C-c C-w <C-left>"   buf-move-left)
+  (m-key m-bind-mode-map "C-c C-w <C-return>" m-sh)
+  (m-key m-bind-mode-map "C-c C-w <C-right>"  buf-move-right)
+  (m-key m-bind-mode-map "C-c C-w <C-up>"     buf-move-up)
+  (m-key m-bind-mode-map "C-c C-w <C-up>"     buf-move-up)
+  (m-key m-bind-mode-map "C-c C-w C-,"        m-popup-term)
+  (m-key m-bind-mode-map "C-c C-w C-\\"       m-pipe )
+  (m-key m-bind-mode-map "C-c C-w C-c"        m-compile-foreground)
+  (m-key m-bind-mode-map "C-c C-w c"          m-compile-background)
+  (m-key m-bind-mode-map "C-c C-w C-p"        projectile-find-file)
+  (m-key m-bind-mode-map "C-c C-w C-r"        remember-notes)
+  (m-key m-bind-mode-map "C-c C-w f"          m-sudo-edit)
+  (m-key m-bind-mode-map "C-c C-w m"          m-view-message)
+  (m-key m-bind-mode-map "C-c C-w w"          which-key-mode)
+  (m-key m-bind-mode-map "C-c D"              m-show-all-terminals)
+  (m-key m-bind-mode-map "C-c L"              helm-do-ag-project-root)
+  (m-key m-bind-mode-map "C-c T"              disable-theme)
+  (m-key m-bind-mode-map "C-c b"              battery)
+  (m-key m-bind-mode-map "C-c d"              m-open-hidden-terminal)
+  (m-key m-bind-mode-map "C-c e"              eval-and-replace)
+  (m-key m-bind-mode-map "C-c f G"            artbollocks-mode)
+  (m-key m-bind-mode-map "C-c f L"            langtool-check-done)
+  (m-key m-bind-mode-map "C-c f P"            flyspell-prog-mode)
+  (m-key m-bind-mode-map "C-c f a"            auto-fill-mode)
+  (m-key m-bind-mode-map "C-c f b"            flyspell-buffer)
+  (m-key m-bind-mode-map "C-c f c"            langtool-correct-buffer)
+  (m-key m-bind-mode-map "C-c f d"            ispell-change-dictionary)
+  (m-key m-bind-mode-map "C-c f f"            flyspell-mode)
+  (m-key m-bind-mode-map "C-c f l"            langtool-check)
+  (m-key m-bind-mode-map "C-c F"              flycheck-mode)
+  (m-key m-bind-mode-map "C-c i"              imenu-anywhere)
+  (m-key m-bind-mode-map "C-c l"              calendar)
+  (m-key m-bind-mode-map "C-c M"              m-mail)
+  (m-key m-bind-mode-map "C-c m"              mu4e)
+  (m-key m-bind-mode-map "C-c o"              global-writeroom-mode)
+  (m-key m-bind-mode-map "C-c q b"            m-kill-all-buffers)
+  (m-key m-bind-mode-map "C-c q d"            m-logout-all-terminals)
+  (m-key m-bind-mode-map "C-c q q"            kill-emacs)
+  (m-key m-bind-mode-map "C-c r"              m-remember-minibuffer)
+  (m-key m-bind-mode-map "C-c t"              load-theme)
+  (m-key m-bind-mode-map "C-c v"              evil-mode)
+  (m-key m-bind-mode-map "C-c w"              m-watch-later)
+  (m-key m-bind-mode-map "C-c y"              m-remember-quick)
+  (m-key m-bind-mode-map "C-h C-c"            customize)
+  (m-key m-bind-mode-map "C-h C-g"            customize-group)
+  (m-key m-bind-mode-map "C-h C-k"            free-keys)
+  (m-key m-bind-mode-map "C-h C-v"            customize-variable)
+  (m-key m-bind-mode-map "C-x C-b"            ibuffer)
+  (m-key m-bind-mode-map "C-x C-c"            delete-frame)
+  (m-key m-bind-mode-map "C-x C-j"            dired-jump)
+  (m-key m-bind-mode-map "C-x C-l"            lgrep)
+  (m-key m-bind-mode-map "C-x F"              counsel-git-grep)
+  (m-key m-bind-mode-map "C-x f"              counsel-git)
+  (m-key m-bind-mode-map "C-x g"              magit-status)
+  (m-key m-bind-mode-map "C-x j"              dired-jump-other-window)
+  (m-key m-bind-mode-map "C-x l"              counsel-locate)
+  (m-key m-bind-mode-map "C-x m"              mu4e-compose-new)
+  (m-key m-bind-mode-map "C-x p"              proced )
+  (m-key m-bind-mode-map "C-x v"              m-reload-buffer)
+  (m-key m-bind-mode-map "C-z <C-down>"       rotate:even-vertical)
+  (m-key m-bind-mode-map "C-z <C-left>"       rotate:main-vertical)
+  (m-key m-bind-mode-map "C-z <C-return>"     rotate:tiled)
+  (m-key m-bind-mode-map "C-z <C-right>"      rotate:even-horizontal)
+  (m-key m-bind-mode-map "C-z <C-up>"         m-2-pane)
+  (m-key m-bind-mode-map "C-z C-x"            m-toggle-mode-line)
+  (m-key m-bind-mode-map "C-z C-0"            m-reset-frame)
+  (m-key m-bind-mode-map "C-z C-1"            m-tiny-frame)
+  (m-key m-bind-mode-map "C-z C-2"            m-large-frame)
+  (m-key m-bind-mode-map "C-z C-3"            m-huge-frame)
+  (m-key m-bind-mode-map "C-z C-SPC"          rectangle-mark-mode)
+  (m-key m-bind-mode-map "C-z C-d"            m-delete-pane)
+  (m-key m-bind-mode-map "C-z C-k"            m-kill-file-name)
+  (m-key m-bind-mode-map "C-z C-l"            bookmark-jump)
+  (m-key m-bind-mode-map "C-z C-z"            switch-to-buffer)
+  (m-key m-bind-mode-map "C-z d"              m-delete-pane)
+  (m-key m-bind-mode-map "C-z k"              m-kill-buffer-name)
+  (m-key m-bind-mode-map "C-z l"              bookmark-jump)
+  (m-key m-bind-mode-map "C-z x"              m-set-frame-fonts)
+  (m-key m-bind-mode-map "C-z z"              ibuffer)
+  (m-key m-bind-mode-map "C-{"                backward-paragraph)
+  (m-key m-bind-mode-map "C-}"                forward-paragraph)
+  (m-key m-bind-mode-map "M-DEL"              delete-indentation)
+  (m-key m-bind-mode-map "M-Q"                m-seperate-sentences)
+  (m-key m-bind-mode-map "M-a"                backward-sexp)
+  (m-key m-bind-mode-map "M-c"                m-capitalize)
+  (m-key m-bind-mode-map "M-d"                kill-sexp)
+  (m-key m-bind-mode-map "M-e"                forward-sexp)
+  (m-key m-bind-mode-map "M-k"                m-copy-line)
+  (m-key m-bind-mode-map "M-l"                m-downcase)
+  (m-key m-bind-mode-map "M-o"                avy-goto-word-1)
+  (m-key m-bind-mode-map "M-r"                vr/replace)
+  (m-key m-bind-mode-map "M-s"                swiper)
+  (m-key m-bind-mode-map "M-u"                m-upcase)
+  (m-key m-bind-mode-map "M-x"                execute-extended-command)
+  (m-key m-bind-mode-map "M-y"                browse-kill-ring)
+  (m-key m-bind-mode-map "M-{"                m-backward-block)
+  (m-key m-bind-mode-map "M-}"                m-forward-block)
+  (m-key m-bind-mode-map "` ,"                kmacro-start-macro-or-insert-counter)
+  (m-key m-bind-mode-map "` -"                m-undo-tree)
+  (m-key m-bind-mode-map "` ."                kmacro-end-or-call-macro)
+  (m-key m-bind-mode-map "` 1"                m-term-current)
+  (m-key m-bind-mode-map "` 2"                m-term-command)
+  (m-key m-bind-mode-map "` SPC"              m-command-to-buffer)
+  (m-key m-bind-mode-map "` <menu>"           tangle-init-file)
+  (m-key m-bind-mode-map "` ?"                m-term-right)
+  (m-key m-bind-mode-map "` DEL"              global-m-bind-mode)
+  (m-key m-bind-mode-map "` RET"              m-async-command)
+  (m-key m-bind-mode-map "` ["                term-line-mode)
+  (m-key m-bind-mode-map "` \""               m-term-below)
+  (m-key m-bind-mode-map "` ]"                term-char-mode)
+  (m-key m-bind-mode-map "` `"                self-insert-command)
+  (m-key m-bind-mode-map "` e"                (lambda () (interactive)(eshell t)))
+  (m-key m-bind-mode-map "` j"                avy-goto-word-1-below)
+  (m-key m-bind-mode-map "` k"                avy-goto-word-1-above)
+  (m-key m-bind-mode-map "` o"                avy-goto-word-1)
+  (m-key m-bind-mode-map "` q"                m-kill-buffer-unsafe)
+  (m-key m-bind-mode-map "` s"                (lambda () (interactive) (switch-to-buffer (generate-new-buffer "*scratch*"))))
+  (m-key m-bind-mode-map "` t"                m-change-rectangle)
+  (m-key m-bind-mode-map "` w"                bury-buffer)
+#+END_SRC
+
+** org-mode
+#+BEGIN_SRC emacs-lisp
+  (define-key org-mode-map (kbd "C-c C-w") nil)
+  (m-key org-mode-map "<C-left>"    windmove-left)
+  (m-key org-mode-map "<C-right>"   windmove-right)
+  (m-key org-mode-map "C-c )"       org-ref-helm-insert-cite-link)
+  (m-key org-mode-map "C-c C-l"     org-preview-latex-fragment)
+  (m-key org-mode-map "C-c C-o"     m-org-open-link)
+  (m-key org-mode-map "C-c C-w C-k" org-cut-subtree)
+  (m-key org-mode-map "C-c C-w C-y" org-paste-subtree)
+  (m-key org-mode-map "C-c P"       (lambda () (interactive)(org-beamer-export-to-pdf t)))
+  (m-key org-mode-map "C-c p"       (lambda () (interactive)(org-latex-export-to-pdf t)))
+#+END_SRC
+
+** region-bindings
+#+BEGIN_SRC emacs-lisp
+  (m-key region-bindings-mode-map ","  er/contract-region)
+  (m-key region-bindings-mode-map "."  er/expand-region)
+  (m-key region-bindings-mode-map "="  count-words-region)
+  (m-key region-bindings-mode-map "a"  align-current)
+  (m-key region-bindings-mode-map "\\" m-pipe)
+  (m-key region-bindings-mode-map "_"  mc/edit-beginnings-of-lines)
+  (m-key region-bindings-mode-map "A"  align-values)
+  (m-key region-bindings-mode-map "o"  m-find-region)
+  (m-key region-bindings-mode-map "s"  sort-lines)
+  (m-key region-bindings-mode-map "r"  vr/replace)
+  (m-key region-bindings-mode-map "s"  sort-lines)
+  (m-key region-bindings-mode-map "d"  delete-rectangle)
+  (m-key region-bindings-mode-map "t"  string-rectangle)
+  (m-key region-bindings-mode-map "|"  m-pipe)
+#+END_SRC
+
+** term
+#+BEGIN_SRC emacs-lisp
+  (define-key term-raw-map (kbd "C-c C-w") nil)
+  (define-key term-raw-map (kbd "`") nil)
+  (define-key term-raw-map (kbd "C-z") nil)
+  (m-key term-raw-map "C-c C-d"        "")
+  (m-key term-raw-map "<C-backspace>"  "")
+  (m-key term-raw-map "C-\\"           toggle-input-method)
+  (m-key term-raw-map "C-c `"          term-send-backquote)
+  (m-key term-raw-map "` '"            m-dired-below)
+  (m-key term-raw-map "` /"            m-dired-right)
+  (m-key term-raw-map "` ?"            m-term-right)
+  (m-key term-raw-map "` \""           m-term-below)
+#+END_SRC
+
+** dired
+#+BEGIN_SRC emacs-lisp
+  (m-key dired-mode-map "C-c C-c" dired-toggle-read-only)
+  (m-key dired-mode-map "C-j"     dired-up-directory)
+  (m-key dired-mode-map "/"       helm-find)
+  (m-key dired-mode-map "?"       helm-do-ag)
+#+END_SRC
+
+** emacs-lisp
+#+BEGIN_SRC emacs-lisp
+  (m-key emacs-lisp-mode-map "C-c C-c"            eval-defun)
+#+END_SRC
+
+** paredit
+#+BEGIN_SRC emacs-lisp
+  (define-key paredit-mode-map (kbd "M-s") nil)
+#+END_SRC
+
+** python
+#+BEGIN_SRC emacs-lisp
+  (when (eq system-type 'gnu/linux)
+    (progn
+      (use-package python :defer t
+        :config
+        (company-jedi t)
+        (m-key python-mode-map "M-." jedi:goto-definition)
+        (m-key python-mode-map "M-," jedi:goto-definition-pop-marker)
+        (m-key python-mode-map "C-c p" py-autopep8-buffer))))
+#+END_SRC
+
+** Ivy
+#+BEGIN_SRC emacs-lisp
+  ;; swap ivy-immediate-done and ivy-alt-done bindings
+  (m-key ivy-minibuffer-map "C-j" ivy-immediate-done)
+  (m-key ivy-minibuffer-map "C-M-j" ivy-alt-done)
+#+END_SRC
+
+** Company
+#+BEGIN_SRC emacs-lisp
+  (m-key company-active-map "<tab>" company-complete-common-or-cycle)
+  (define-key company-mode-map [remap indent-for-tab-command]
+    'company-indent-or-complete-common)
+#+END_SRC
+
+* Hooks
+
+** Make scripts executable on save
+When you write a script you no longer have to =M-! chmod +x=, just
+save the file and it will be executable.
+#+BEGIN_SRC emacs-lisp
+  (add-hook 'after-save-hook 'executable-make-buffer-file-executable-if-script-p)
+#+END_SRC
+
+** Dim parenthesis
+Adds a dimmed face for parentheses. This makes them blend into
+the background. Makes Emacs lisp code look much cleaner
+#+BEGIN_SRC emacs-lisp
+  (use-package paren-face :config (add-hook 'prog-mode-hook 'paren-face-mode))
+#+END_SRC
+
+** Delete trailing white space on save
+Removes white space (spaces, tabs) at the end of lines every
+time you save a file. This prevents files from getting too ugly.
+#+BEGIN_SRC emacs-lisp
+  (add-hook 'before-save-hook 'delete-trailing-whitespace)
+#+END_SRC
+
+** Hide details in dired
+By default dired mode shows a lot of details like permissions,
+size, owner, etc.
+This makes dired only display filenames by default. If you need
+addition detail you can toggle the detail on and of with "("
+#+BEGIN_SRC emacs-lisp
+  (use-package dired-details
+    :config
+    (add-hook 'dired-mode-hook '(lambda () (dired-hide-details-mode t)
+                                  (dired-async-mode t))))
+#+END_SRC
+
+** Show artbollucks when activated
+#+BEGIN_SRC emacs-lisp
+  (use-package artbollocks-mode
+    :config (add-hook 'artbollocks-mode-hook 'font-lock-fontify-buffer))
+#+END_SRC
+
+** Paredit
+#+BEGIN_SRC emacs-lisp
+  (use-package paredit-everywhere :config (add-hook 'prog-mode-hook 'paredit-everywhere-mode))
+  (use-package paredit
+    :init
+    (add-hook 'clojure-mode-hook 'enable-paredit-mode)
+    (add-hook 'cider-repl-mode-hook 'enable-paredit-mode)
+    (add-hook 'lisp-mode-hook 'enable-paredit-mode)
+    (add-hook 'emacs-lisp-mode-hook 'enable-paredit-mode)
+    (add-hook 'lisp-interaction-mode-hook 'enable-paredit-mode)
+    (add-hook 'ielm-mode-hook 'enable-paredit-mode)
+    (add-hook 'json-mode-hook 'enable-paredit-mode)
+    :config
+    (bind-list  paredit-mode-map
+                ("<M-down>" m-swap-line-down)
+                ("<M-up>"   m-swap-line-up)))
+
+#+END_SRC
+
+** Extra highlighting in elisp
+#+BEGIN_SRC emacs-lisp
+  (use-package highlight-defined :config
+              (add-hook 'emacs-lisp-mode-hook 'highlight-defined-mode))
+#+END_SRC
+
+** Warn when sending an email mentioning an attachement without attachement
+#+BEGIN_SRC emacs-lisp
+  (defun mbork/message-attachment-present-p ()
+    "Return t if an attachment is found in the current message."
+    (save-excursion
+      (save-restriction
+        (widen)
+        (goto-char (point-min))
+        (when (search-forward "<#part" nil t) t))))
+
+  (defcustom mbork/message-attachment-intent-re
+    (regexp-opt '("attach" "Attach"
+                  "attached" "Attached"
+                  "attachment" "Attachment"
+                  "bijlage" "Bijlage"))
+    "A regex which - if found in the message, and if there is no
+  attachment - should launch the no-attachment warning."
+ :group 'm-custom)
+
+  (defcustom mbork/message-attachment-reminder
+    "Are you sure you want to send this message without any attachment? "
+    "The default question asked when trying to send a message
+  containing `mbork/message-attachment-intent-re' without an
+  actual attachment."
+ :group 'm-custom)
+
+  (defun mbork/message-warn-if-no-attachments ()
+    "Ask the user if s?he wants to send the message even though
+  there are no attachments."
+    (when (and (save-excursion
+                 (save-restriction
+                   (widen)
+                   (goto-char (point-min))
+                   (re-search-forward mbork/message-attachment-intent-re nil t)))
+               (not (mbork/message-attachment-present-p)))
+      (unless (y-or-n-p mbork/message-attachment-reminder)
+        (keyboard-quit))))
+
+  (add-hook 'message-send-hook #'mbork/message-warn-if-no-attachments)
+#+END_SRC
